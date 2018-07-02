@@ -139,7 +139,7 @@
   对于解析XML，SAX首先读取DTD定义。默认的寻找规则，即通过网络下载相应的DTD声明进行认证<br>
   * EntityResovler可以提供寻找DTD声明的方法
     1.entityResolver接口：InputSource resolveEntity(String publicId, String systemId)
-    2.Spring中使用DelegatingEntityResolver为entityResolver的实现类，实现方法：
+    2.Spring中使用DelegatingEntityResolver为entityResolver的实现类，实现方法。<br>
     
    ```
         public  InputSource  resolveEntity(String  publicId,  String  systemId)  throws SAXException, IOException {
