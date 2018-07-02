@@ -3,7 +3,7 @@
   Xml继承自DefaultListableBeanFactory，而DefaultListableBeanFactory是整个bean加载的核心部分，是spring注册和加载bean的默认实现<br>
   而对于XmlBeanFactory与DefaultListableBeanFactory不同是前者使用了自定义的XML读取器XmlBeanDefinitionReader，而后者继承了AbstractAutowireCapbleBeanFactory并实现了ConfigurableListableBeanFactory以及BeanDefinitionRegistry接口
   
-  ![]( https://github.com/yehuali/springSource/raw/master/note/images/DefaultListableBeanFactory.uml)
+  ![]( https://github.com/yehuali/springSource/raw/master/note/images/DefaultListableBeanFactory.jpg)
   * AliasRegistry:定义对alias的简单增删改等操作
   * SimpleAliasRegistry:主要使用map作为alias的缓存，并对接口AliasRegistry进行实现
   * SingletonBeanRegistry：定义对单例的注册及获取
@@ -130,9 +130,9 @@
   }
    ```
   SAX解析XML文档的套路:<br>
-   （1）创建DocumentBuilderFactory
-   （2）通过DocumentBuilderFactory创建DocumentBuilder
-   （3）解析inputSource来返回Document对象
+   （1）创建DocumentBuilderFactory<br>
+   （2）通过DocumentBuilderFactory创建DocumentBuilder<br>
+   （3）解析inputSource来返回Document对象<br>
    
   #### 3.2.1 EntityResolver用法
   如果SAX应用程序需要实现自定义处理外部实体，则必须实现此接口并使用setEntityResolver方法向SAX驱动器注册一个实例<br>
