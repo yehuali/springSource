@@ -174,7 +174,7 @@
     }
    ```
    loadDocument应用了面向对象找那个单一职责的原则
-    ```
+   ```
        protected void doRegisterBeanDefinitions(Element root) {
            //处理 profile 属性
            String profileSpec = root.getAttribute(PROFILE_ _ATTRIBUTE);
@@ -196,7 +196,7 @@
            postProcessXml(root);
            this.delegate = parent;
        }
-    ```
+   ```
    一个类要么面向继承设计，要么就用final修饰。preProcessXml(root)或者postProcessXml(root)是空的，利用模板方法模式为子类设计<br>
    （1）profile的用法
    ```
