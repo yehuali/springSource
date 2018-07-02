@@ -137,8 +137,8 @@
   #### 3.2.1 EntityResolver用法
   如果SAX应用程序需要实现自定义处理外部实体，则必须实现此接口并使用setEntityResolver方法向SAX驱动器注册一个实例<br>
   对于解析XML，SAX首先读取DTD定义。默认的寻找规则，即通过网络下载相应的DTD声明进行认证<br>
-  * EntityResovler可以提供寻找DTD声明的方法
-    1.entityResolver接口：InputSource resolveEntity(String publicId, String systemId)
+  * EntityResovler可以提供寻找DTD声明的方法 <br>
+    1.entityResolver接口：InputSource resolveEntity(String publicId, String systemId) <br>
     2.Spring中使用DelegatingEntityResolver为entityResolver的实现类，实现方法。<br>
     
    ```
