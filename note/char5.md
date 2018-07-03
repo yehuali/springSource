@@ -159,3 +159,74 @@ protected <T> T doGetBean(String name, @Nullable Class<T> requiredType, @Nullabl
         }
     }
 ```
+（1）转换对应beanName <br>
+  &emsp;&emsp;传入的参数可能是别名，也可能是FactoryBean，所以需要进行一系列解析<br>
+  * 去除FactoryBean的修饰符，如果name="&aa" ，那么会首先去除&而使name="aa"
+  * 取指定alias所表示的最终beanName，例如别名A指向名称B的bean则返回B <br>
+（2）尝试从缓存中加载单例<br>
+   单例在Spring的同一个容器内只会被创建一次，后续再获取bean，就直接从单例缓存中获取了<br>
+   如果加载不成功则再次尝试从singletonFactories中加载<br>
+（3）bean的实例化<br>
+  如果从缓存中得到了bean的原始状态，则需要对bean进行实例化（缓存中记录只是最原始的bean状态）,getObjectForBeanInstance就是完成工作的<br>
+（4）原型模式的依赖检查<br>
+   只有在单例情况下才会尝试解决循环依赖，也就是情况isPrototypeCurrentlyCreation(beanName)判断true<br>
+（5）检测parentBeanFactory<br>
+    parentBeanFactory != null && !this.containsBeanDefinition(beanName) <br>
+    !this.containsBeanDefinition(beanName) 检测如果当前加载的XML配置文件中不包含beanName所对应的配置，就只能到parentBeanFactory去尝试下，再去递归的调用getBean方法<br>
+（6）将存储XML配置文件的GernericBeanDefinition转换为RootBeanDefinition<br>
+    因为从XML配置文件中读取到的Bean信息是存储在GernericBeanDefinition中的，但是所有的Bean后续处理都是针对于RootBeanDefinition的<br>
+    如果父类bean不为空的话，则会一并合并父类的属性<br>
+（7）寻找依赖<br>
+**（8）针对不同的scope进行bean的创建<br>** 
+     Spring会根据不同的配置进行不同的初始化策略<br>
+（9）类型转换<br>
+     通常对该方法的调用参数requiredType是为空的<br>
+     但存在返回的bean其实是个String,但是requiredType却传入Integer类型，功能是将返回的bean转换为requiredType所指定的类型<br>
+     在Spring中提供了各种各样的转换器，用户可以扩展转换器来满足需求<br>    
+![]( https://github.com/yehuali/springSource/raw/master/note/images/bean的获取过程.jpg)
+
+### 1.FactoryBean的使用
+   一般情况下，Spring通过反射机制利用bean的class属性指定实现类来实例化bean <br>
+   但某些情况下，实例化bean过程比较复杂，按照传统方式，需要在<bean>中提供大量的配置信息，这时采用编码的方式得到一个简单的方案<br>
+   Spring为此提供了FactoryBean的工厂类接口，用户可以通过实现该接口定制实例化bean的逻辑<br>
+   Spring自身提供了70多个FactoryBean的实现，从spring3.0开始，FactoryBean开始支持泛型
+```
+public interface FactoryBean<T> {
+    @Nullable
+    T getObject() throws Exception;
+    @Nullable
+    Class<?> getObjectType();
+    default boolean isSingleton() {
+        return true;
+    }
+}
+```  
+当配置文件中<bean>的class属性配置的实现类是FactoryBean时，通过getBean（）方法返回的不是FactoryBean本身，而是FactoryBean#getObject()方法返回的对象,相当于FactoryBean#getObject()代理了getObject()<br>
+
+
+
+  
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
