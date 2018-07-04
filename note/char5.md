@@ -601,8 +601,15 @@ protected Object resolveBeforeInstantiation(String beanName, RootBeanDefinition 
 ### 6 循环依赖
  **1.构造器循环依赖**<br>
   通过构造器注入构成的循环依赖，此依赖是无法解决的，只能抛出BeanCurrentlyInCreationException异常表示循环依赖<br>
-  
- 
+  Spring容器将每一个正在创建的bean标识符放在一个"当前创建bean池"中，bean标识符在创建过程中将一直保持在这个池中，如果在创建bean过程中发现自己已经在"当前创建bean池"里时，将抛出BeanCurrentlyInCreationException异常表示循环依赖；而对于创建完毕的bean将从"当前创建bean池"中清除掉<br>
+  **2.setter循环依赖**<br>
+  对于setter注入造成的依赖是通过Spring容器提前暴露刚完成构造器注入但未完成其他步骤（如setter注入）的bean来完成的，而且只能解决单例作用域的bean循环依赖<br>
+  通过提前暴露一个单例工厂方法，从而使其他bean能引用到该bean<br>
+  具体步骤：<br>
+  （1）Spring容器创建单例"testA"bean，首先根据无参构造器创建bean，并暴露一个"ObjectFactory"用于返回一个提前暴露一个创建中的bean，并将"testA"标识符放到"当前创建bean池",然后进行setter注入"testB"<br>
+  （2）testC进行setter注入"testA"，进行注入"testA"时由于提前暴露了"ObjectFactory"工厂，从而使用它返回提前暴露一个创建中的bean<br>
+  **3.prototype范围的依赖处理**<br>
+   对于"prototyppe"作用域bean，Spring容器无法完成依赖注入，因为Spring容器不进行缓存"prototype"作用域的bean，因此无法提前暴露一个创建中的bean
    
    
    
