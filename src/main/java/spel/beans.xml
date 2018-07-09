@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:p="http://www.springframework.org/schema/p"
+       xmlns:aop="http://www.springframework.org/schema/aop"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans
+        http://www.springframework.org/schema/beans/spring-beans.xsd
+        http://www.springframework.org/schema/aop
+        http://www.springframework.org/schema/aop/spring-aop-4.3.xsd">
+
+
+    <bean class="org.springframework.beans.factory.config.CustomEditorConfigurer">
+        <property name="customEditors">
+            <map>
+             <!--   <entry key="java.util.Date">
+                    <bean class="spel.DatePropertyEditor">
+                        <property name="format" value="yyyy-MM-dd"/>
+                    </bean>
+                </entry>-->
+                <entry key="java.util.Date" value="spel.DatePropertyEditor"/>
+            </map>
+        </property>
+    </bean>
+    <bean id="gyl" class="spel.User" p:id="9527">
+        <property name="name" value="张杰"/>
+    </bean>
+
+    <bean id="order001" class="spel.Order">
+        <property name="customer" ref="gyl"></property>
+        <property name="userName" value="#{gyl.name}"></property>
+        <property name="orderName" value='#{"Apples".toUpperCase()}'></property>
+    </bean>
+
+    <bean id="userManager" class="spel.UserManager">
+        <property name="dataValue">
+            <value>2013-03-15</value>
+        </property>
+    </bean>
+</beans>

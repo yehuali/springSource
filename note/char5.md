@@ -609,13 +609,391 @@ protected Object resolveBeforeInstantiation(String beanName, RootBeanDefinition 
   （1）Spring容器创建单例"testA"bean，首先根据无参构造器创建bean，并暴露一个"ObjectFactory"用于返回一个提前暴露一个创建中的bean，并将"testA"标识符放到"当前创建bean池",然后进行setter注入"testB"<br>
   （2）testC进行setter注入"testA"，进行注入"testA"时由于提前暴露了"ObjectFactory"工厂，从而使用它返回提前暴露一个创建中的bean<br>
   **3.prototype范围的依赖处理**<br>
-   对于"prototyppe"作用域bean，Spring容器无法完成依赖注入，因为Spring容器不进行缓存"prototype"作用域的bean，因此无法提前暴露一个创建中的bean
+   对于"prototyppe"作用域bean，Spring容器无法完成依赖注入，因为Spring容器不进行缓存"prototype"作用域的bean，因此无法提前暴露一个创建中的bean<br>
    
-   
-   
-   
-   
-   
+### 7.创建bean
+  当经历过resolveBeforeInstantiation方法后，程序有两个选择，如果创建了代理或者说重写了InstantiationAwareBeanPostProcessor的postProcessBeforeInstantiation方法并在postProcessBeforeInstantiation中改变了bean <br>
+  否认需要在doCreateBean中完成常规bean的创建<br>  
+```
+protected Object doCreateBean(final String beanName, final RootBeanDefinition mbd, final @Nullable Object[] args)
+			throws BeanCreationException {
+
+		// Instantiate the bean.
+		BeanWrapper instanceWrapper = null;
+		if (mbd.isSingleton()) {
+			instanceWrapper = this.factoryBeanInstanceCache.remove(beanName);
+		}
+		if (instanceWrapper == null) {
+		    //根据指定bean使用对应的策略创建新的实例，如：工厂方法、构造函数自动注入、简单初始化
+			instanceWrapper = createBeanInstance(beanName, mbd, args);
+		}
+		final Object bean = instanceWrapper.getWrappedInstance();
+		Class<?> beanType = instanceWrapper.getWrappedClass();
+		if (beanType != NullBean.class) {
+			mbd.resolvedTargetType = beanType;
+		}
+
+		// Allow post-processors to modify the merged bean definition.
+		synchronized (mbd.postProcessingLock) {
+			if (!mbd.postProcessed) {
+				try {
+				    //应用MergedBeanDefinitionPostProcessor
+					applyMergedBeanDefinitionPostProcessors(mbd, beanType, beanName);
+				}
+				catch (Throwable ex) {
+					throw new BeanCreationException(mbd.getResourceDescription(), beanName,
+							"Post-processing of merged bean definition failed", ex);
+				}
+				mbd.postProcessed = true;
+			}
+		}
+
+		// Eagerly cache singletons to be able to resolve circular references
+		// even when triggered by lifecycle interfaces like BeanFactoryAware.
+		//是否需要提早曝光:单例&允许循环依赖&当前bean正在创建中，检测循环依赖
+		boolean earlySingletonExposure = (mbd.isSingleton() && this.allowCircularReferences &&
+				isSingletonCurrentlyInCreation(beanName));
+		if (earlySingletonExposure) {
+			if (logger.isDebugEnabled()) {
+				logger.debug("Eagerly caching bean '" + beanName +
+						"' to allow for resolving potential circular references");
+			}
+			/**
+			  *为避免后期循环依赖，可以在bean初始化完成前将创建实例的ObjectFactory加入工厂
+			  *对bean再一次依赖引用，主要应用SmartInstantiationAware BeanPostProcessor
+			  *其中熟知的AOP就是在这里将advice动态织入bean中，如没有则直接返回bean，不做任何处理
+			  */
+			addSingletonFactory(beanName, () -> getEarlyBeanReference(beanName, mbd, bean));
+		}
+
+		// Initialize the bean instance.
+		Object exposedObject = bean;
+		try {
+		    //对bean进行填充，将各个属性值注入，其中，可能存在依赖于其他bean的属性，则会递归初始依赖bean
+			populateBean(beanName, mbd, instanceWrapper);
+			//调用初始化犯法，比如init-method
+			exposedObject = initializeBean(beanName, exposedObject, mbd);
+		}
+		catch (Throwable ex) {
+			if (ex instanceof BeanCreationException && beanName.equals(((BeanCreationException) ex).getBeanName())) {
+				throw (BeanCreationException) ex;
+			}
+			else {
+				throw new BeanCreationException(
+						mbd.getResourceDescription(), beanName, "Initialization of bean failed", ex);
+			}
+		}
+
+		if (earlySingletonExposure) {
+			Object earlySingletonReference = getSingleton(beanName, false);
+			//earlySingeletonReference只有在检测到有循环依赖的情况才会不为空
+			if (earlySingletonReference != null) {
+			    //如果exposedObject没有在初始化方法中被改变，也就是没有被增强
+				if (exposedObject == bean) {
+					exposedObject = earlySingletonReference;
+				}
+				else if (!this.allowRawInjectionDespiteWrapping && hasDependentBean(beanName)) {
+					String[] dependentBeans = getDependentBeans(beanName);
+					Set<String> actualDependentBeans = new LinkedHashSet<>(dependentBeans.length);
+					for (String dependentBean : dependentBeans) {
+					    //检测依赖
+						if (!removeSingletonIfCreatedForTypeCheckOnly(dependentBean)) {
+							actualDependentBeans.add(dependentBean);
+						}
+					}
+					/**
+					  *因为bean创建后其所依赖的Bean一定是已经创建的
+					  *actualDependentBeans不为空则表示当前bean创建后其依赖的bean却没有全部创建完，也就是说存在循环依赖
+					  */
+					if (!actualDependentBeans.isEmpty()) {
+						throw new BeanCurrentlyInCreationException(beanName,
+								"Bean with name '" + beanName + "' has been injected into other beans [" +
+								StringUtils.collectionToCommaDelimitedString(actualDependentBeans) +
+								"] in its raw version as part of a circular reference, but has eventually been " +
+								"wrapped. This means that said other beans do not use the final version of the " +
+								"bean. This is often the result of over-eager type matching - consider using " +
+								"'getBeanNamesOfType' with the 'allowEagerInit' flag turned off, for example.");
+					}
+				}
+			}
+		}
+
+		// Register bean as disposable.
+		try {
+		    //根据scopse注册bean
+			registerDisposableBeanIfNecessary(beanName, bean, mbd);
+		}
+		catch (BeanDefinitionValidationException ex) {
+			throw new BeanCreationException(
+					mbd.getResourceDescription(), beanName, "Invalid destruction signature", ex);
+		}
+
+		return exposedObject;
+	}
+```
+整个函数的概要思路:<br>  
+（1）如果是单例则需要首先清楚缓存<br>
+（2）实例化bean，将BeanDefinition转换为BeanWrapper<br>
+* 如果存在工厂方法则使用工厂方法进行初始化
+* 一个类有多个构造函数，每个构造函数都有不同的参数，所以需要根据参数锁定构造函数并进行初始化
+* 如果既不存在工厂方法也不存在带有参数的构造函数，则使用默认的构造函数进行bean的实例化<br>
+（3）MergedBeanDefinitionPostProcessor的应用<br>
+&emsp; &emsp;bean合并后的处理，Autowired注解正是通过此方法实现诸如类型的预解析<br>
+（4）依赖处理<br>
+  A中含有B属性，B中有A，A在创建B时不是直接创建B,而是通过放入缓存中的ObjectFactory来创建实例<br>
+（5）属性填充。将所有属性填充至bean的实例中<br>
+（6）循环依赖检查<br>
+   检测已经加载的bean是否已经出现了依赖循环，并判断是否需要抛出异常<br>
+（7）注册DisposableBean<br>
+   如果配置了destroy-method，这里需要注册以便于在销毁时候调用<br>
+（8）完成创建并返回<br>
+
+**7.1 创建bean的实例**   
+```
+protected BeanWrapper createBeanInstance(String beanName, RootBeanDefinition mbd, @Nullable Object[] args) {
+		// Make sure bean class is actually resolved at this point.
+		//解析class
+		Class<?> beanClass = resolveBeanClass(mbd, beanName);
+
+		if (beanClass != null && !Modifier.isPublic(beanClass.getModifiers()) && !mbd.isNonPublicAccessAllowed()) {
+			throw new BeanCreationException(mbd.getResourceDescription(), beanName,
+					"Bean class isn't public, and non-public access not allowed: " + beanClass.getName());
+		}
+
+		Supplier<?> instanceSupplier = mbd.getInstanceSupplier();
+		if (instanceSupplier != null) {
+			return obtainFromSupplier(instanceSupplier, beanName);
+		}
+        //如果工厂方法不为空则使用工厂方法初始化策略
+		if (mbd.getFactoryMethodName() != null)  {
+			return instantiateUsingFactoryMethod(beanName, mbd, args);
+		}
+
+		// Shortcut when re-creating the same bean...
+		boolean resolved = false;
+		boolean autowireNecessary = false;
+		if (args == null) {
+			synchronized (mbd.constructorArgumentLock) {
+			    //一个类有多个构造函数，每个构造函数都有不同的参数，所以调用前需要先根据参数锁定构造函数或对应的工厂方法
+				if (mbd.resolvedConstructorOrFactoryMethod != null) {
+					resolved = true;
+					autowireNecessary = mbd.constructorArgumentsResolved;
+				}
+			}
+		}
+		//如果已经解析过则使用解析好的构造函数方法不需要再次锁定
+		if (resolved) {
+			if (autowireNecessary) {
+			    //构造函数自动注入
+				return autowireConstructor(beanName, mbd, null, null);
+			}
+			else {
+			    //使用默认构造函数构造
+				return instantiateBean(beanName, mbd);
+			}
+		}
+
+		// Need to determine the constructor...
+		//需要根据参数解析构造函数
+		Constructor<?>[] ctors = determineConstructorsFromBeanPostProcessors(beanClass, beanName);
+		if (ctors != null ||
+				mbd.getResolvedAutowireMode() == RootBeanDefinition.AUTOWIRE_CONSTRUCTOR ||
+				mbd.hasConstructorArgumentValues() || !ObjectUtils.isEmpty(args))  {
+			//构造函数自动注入
+			return autowireConstructor(beanName, mbd, ctors, args);
+		}
+
+		// No special handling: simply use no-arg constructor.
+		//使用默认构造函数构造
+		return instantiateBean(beanName, mbd);
+	}
+```
+
+```
+public BeanWrapper autowireConstructor(final String beanName, final RootBeanDefinition mbd,
+											@Nullable Constructor<?>[] chosenCtors, @Nullable final Object[] explicitArgs) {
+
+		BeanWrapperImpl bw = new BeanWrapperImpl();
+		this.beanFactory.initBeanWrapper(bw);
+
+		Constructor<?> constructorToUse = null;
+		ArgumentsHolder argsHolderToUse = null;
+		Object[] argsToUse = null;
+
+		if (explicitArgs != null) {
+			argsToUse = explicitArgs;
+		}
+		else {
+			Object[] argsToResolve = null;
+			synchronized (mbd.constructorArgumentLock) {
+				constructorToUse = (Constructor<?>) mbd.resolvedConstructorOrFactoryMethod;
+				if (constructorToUse != null && mbd.constructorArgumentsResolved) {
+					// Found a cached constructor...
+					argsToUse = mbd.resolvedConstructorArguments;
+					if (argsToUse == null) {
+						argsToResolve = mbd.preparedConstructorArguments;
+					}
+				}
+			}
+			if (argsToResolve != null) {
+				argsToUse = resolvePreparedArguments(beanName, mbd, bw, constructorToUse, argsToResolve);
+			}
+		}
+
+		if (constructorToUse == null) {
+			// Need to resolve the constructor.
+			boolean autowiring = (chosenCtors != null ||
+					mbd.getResolvedAutowireMode() == RootBeanDefinition.AUTOWIRE_CONSTRUCTOR);
+			ConstructorArgumentValues resolvedValues = null;
+
+			int minNrOfArgs;
+			if (explicitArgs != null) {
+				minNrOfArgs = explicitArgs.length;
+			}
+			else {
+				ConstructorArgumentValues cargs = mbd.getConstructorArgumentValues();
+				resolvedValues = new ConstructorArgumentValues();
+				minNrOfArgs = resolveConstructorArguments(beanName, mbd, bw, cargs, resolvedValues);
+			}
+
+			// Take specified constructors, if any.
+			Constructor<?>[] candidates = chosenCtors;
+			if (candidates == null) {
+				Class<?> beanClass = mbd.getBeanClass();
+				try {
+					candidates = (mbd.isNonPublicAccessAllowed() ?
+							beanClass.getDeclaredConstructors() : beanClass.getConstructors());
+				}
+				catch (Throwable ex) {
+					throw new BeanCreationException(mbd.getResourceDescription(), beanName,
+							"Resolution of declared constructors on bean Class [" + beanClass.getName() +
+									"] from ClassLoader [" + beanClass.getClassLoader() + "] failed", ex);
+				}
+			}
+			AutowireUtils.sortConstructors(candidates);
+			int minTypeDiffWeight = Integer.MAX_VALUE;
+			Set<Constructor<?>> ambiguousConstructors = null;
+			LinkedList<UnsatisfiedDependencyException> causes = null;
+
+			for (Constructor<?> candidate : candidates) {
+				Class<?>[] paramTypes = candidate.getParameterTypes();
+
+				if (constructorToUse != null && argsToUse.length > paramTypes.length) {
+					// Already found greedy constructor that can be satisfied ->
+					// do not look any further, there are only less greedy constructors left.
+					break;
+				}
+				if (paramTypes.length < minNrOfArgs) {
+					continue;
+				}
+
+				ArgumentsHolder argsHolder;
+				if (resolvedValues != null) {
+					try {
+						String[] paramNames = ConstructorPropertiesChecker.evaluate(candidate, paramTypes.length);
+						if (paramNames == null) {
+							ParameterNameDiscoverer pnd = this.beanFactory.getParameterNameDiscoverer();
+							if (pnd != null) {
+								paramNames = pnd.getParameterNames(candidate);
+							}
+						}
+						argsHolder = createArgumentArray(beanName, mbd, resolvedValues, bw, paramTypes, paramNames,
+								getUserDeclaredConstructor(candidate), autowiring);
+					}
+					catch (UnsatisfiedDependencyException ex) {
+						if (logger.isTraceEnabled()) {
+							logger.trace("Ignoring constructor [" + candidate + "] of bean '" + beanName + "': " + ex);
+						}
+						// Swallow and try next constructor.
+						if (causes == null) {
+							causes = new LinkedList<>();
+						}
+						causes.add(ex);
+						continue;
+					}
+				}
+				else {
+					// Explicit arguments given -> arguments length must match exactly.
+					if (paramTypes.length != explicitArgs.length) {
+						continue;
+					}
+					argsHolder = new ArgumentsHolder(explicitArgs);
+				}
+
+				int typeDiffWeight = (mbd.isLenientConstructorResolution() ?
+						argsHolder.getTypeDifferenceWeight(paramTypes) : argsHolder.getAssignabilityWeight(paramTypes));
+				// Choose this constructor if it represents the closest match.
+				if (typeDiffWeight < minTypeDiffWeight) {
+					constructorToUse = candidate;
+					argsHolderToUse = argsHolder;
+					argsToUse = argsHolder.arguments;
+					minTypeDiffWeight = typeDiffWeight;
+					ambiguousConstructors = null;
+				}
+				else if (constructorToUse != null && typeDiffWeight == minTypeDiffWeight) {
+					if (ambiguousConstructors == null) {
+						ambiguousConstructors = new LinkedHashSet<>();
+						ambiguousConstructors.add(constructorToUse);
+					}
+					ambiguousConstructors.add(candidate);
+				}
+			}
+
+			if (constructorToUse == null) {
+				if (causes != null) {
+					UnsatisfiedDependencyException ex = causes.removeLast();
+					for (Exception cause : causes) {
+						this.beanFactory.onSuppressedException(cause);
+					}
+					throw ex;
+				}
+				throw new BeanCreationException(mbd.getResourceDescription(), beanName,
+						"Could not resolve matching constructor " +
+								"(hint: specify index/type/name arguments for simple parameters to avoid type ambiguities)");
+			}
+			else if (ambiguousConstructors != null && !mbd.isLenientConstructorResolution()) {
+				throw new BeanCreationException(mbd.getResourceDescription(), beanName,
+						"Ambiguous constructor matches found in bean '" + beanName + "' " +
+								"(hint: specify index/type/name arguments for simple parameters to avoid type ambiguities): " +
+								ambiguousConstructors);
+			}
+
+			if (explicitArgs == null) {
+				argsHolderToUse.storeCache(mbd, constructorToUse);
+			}
+		}
+
+		try {
+			final InstantiationStrategy strategy = this.beanFactory.getInstantiationStrategy();
+			Object beanInstance;
+
+			if (System.getSecurityManager() != null) {
+				final Constructor<?> ctorToUse = constructorToUse;
+				final Object[] argumentsToUse = argsToUse;
+				beanInstance = AccessController.doPrivileged((PrivilegedAction<Object>) () ->
+								strategy.instantiate(mbd, beanName, this.beanFactory, ctorToUse, argumentsToUse),
+						this.beanFactory.getAccessControlContext());
+			}
+			else {
+				beanInstance = strategy.instantiate(mbd, beanName, this.beanFactory, constructorToUse, argsToUse);
+			}
+
+			bw.setBeanInstance(beanInstance);
+			return bw;
+		}
+		catch (Throwable ex) {
+			throw new BeanCreationException(mbd.getResourceDescription(), beanName,
+					"Bean instantiation via constructor failed", ex);
+		}
+	}
+```   
+实现的功能考虑方面:<br> 
+（1）构造函数参数的确定
+  * 根据explicitArgs参数判断<br>
+     explicitArgs参数是在调用Bean的时候用户指定的，在BeanFactory类中存在方法:object getBean(String name,Object... args) throws BeansException；<br>
+     在获取bean的时候，用户不但可以指定bean的名称还可以指定bean所对应类的构造函数或者工厂方法的方法参数,主要用于静态工厂方法的调用<br>
+     
+  
    
    
    
